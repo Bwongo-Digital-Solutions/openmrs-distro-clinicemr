@@ -188,10 +188,20 @@ async def explain(payload: ExplainRequest, _user=Depends(require_user)):
     answer = data.get("message", {}).get("content", "").strip()
     if not answer:
         raise HTTPException(status_code=502, detail="Local model returned an empty response")
+
+    valid_markers = {f"S{index}" for index in range(1, len(public_sources) + 1)}
+    used_markers = set(re.findall(r"\\[(S\\d+)\\]", answer))
+    citation_valid = bool(used_markers) and used_markers.issubset(valid_markers)
+    if not citation_valid:
+        answer = (
+            "I could not produce an explanation with verifiable references from the approved "
+            "knowledge sources. Please consult a qualified genetics professional."
+        )
+
     return {
         "answer": answer,
         "sources": public_sources,
         "disclaimer": "Educational information only. Discuss personal results with a qualified genetics professional.",
         "model": MODEL,
-        "grounded": True,
+        "grounded": citation_valid,
     }
