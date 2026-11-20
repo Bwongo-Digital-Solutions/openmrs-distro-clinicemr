@@ -1,3 +1,4 @@
+import hmac
 import os
 import re
 import sqlite3
@@ -10,10 +11,10 @@ from pydantic import BaseModel, Field
 
 DB_PATH = Path(os.getenv("KNOWLEDGE_DB_PATH", "/data/knowledge.db"))
 ACCESS_TOKEN = os.getenv("KNOWLEDGE_RETRIEVAL_TOKEN", "").strip()
-MAX_QUERY_CHARS = int(os.getenv("KNOWLEDGE_MAX_QUERY_CHARS", "1000"))
-MAX_RESULTS = int(os.getenv("KNOWLEDGE_MAX_RESULTS", "5"))
+MAX_QUERY_CHARS = max(2, int(os.getenv("KNOWLEDGE_MAX_QUERY_CHARS", "1000")))
+MAX_RESULTS = max(1, min(5, int(os.getenv("KNOWLEDGE_MAX_RESULTS", "5"))))
 
-app = FastAPI(title="AMANAH GEN Knowledge API", version="0.1.0")
+app = FastAPI(title="AMANAH GEN Knowledge API", version="0.1.1")
 
 
 @contextmanager
@@ -69,7 +70,7 @@ async def startup() -> None:
 
 
 class SearchRequest(BaseModel):
-    question: str = Field(min_length=2, max_length=1000)
+    question: str = Field(min_length=2, max_length=MAX_QUERY_CHARS)
     language: str = Field(default="any", pattern="^(any|en|ar)$")
     limit: int = Field(default=5, ge=1, le=5)
 
@@ -77,7 +78,7 @@ class SearchRequest(BaseModel):
 def require_internal_token(x_knowledge_token: str | None = Header(default=None)) -> None:
     if not ACCESS_TOKEN:
         raise HTTPException(status_code=503, detail="Knowledge retrieval is not configured")
-    if not x_knowledge_token or not __import__("hmac").compare_digest(x_knowledge_token, ACCESS_TOKEN):
+    if not x_knowledge_token or not hmac.compare_digest(x_knowledge_token, ACCESS_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid internal service credential")
 
 
@@ -113,8 +114,8 @@ async def search(payload: SearchRequest):
             SELECT c.id AS chunk_id, c.content,
                    d.id AS document_id, d.title, d.source, d.publisher,
                    d.version, d.language
-            FROM chunks_fts f
-            JOIN chunks c ON c.id = f.chunk_id
+            FROM chunks_fts
+            JOIN chunks c ON c.id = chunks_fts.chunk_id
             JOIN documents d ON d.id = c.document_id
             WHERE chunks_fts MATCH ? AND d.status='approved'
               AND (?='any' OR d.language=?)
