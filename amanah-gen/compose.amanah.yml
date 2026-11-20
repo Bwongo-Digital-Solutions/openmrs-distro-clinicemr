@@ -105,6 +105,20 @@ services:
     expose:
       - "8000"
 
+  amanah-gen-portal:
+    build:
+      context: ./amanah-gen/portal
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # Internal-only: the existing HTTPS gateway is the sole public entry point.
+
 volumes:
   amanah-ollama-data:
   amanah-keycloak-db-data:
