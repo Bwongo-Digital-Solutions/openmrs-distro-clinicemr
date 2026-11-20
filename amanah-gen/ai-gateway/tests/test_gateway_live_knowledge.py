@@ -162,7 +162,8 @@ def run():
         no_match = client.post(
             "/chat", headers=headers,
             json={
-                "question": "no-match-marker-7f29c4e8a6b1",
+                # One unique FTS token: no common words that could match the fixture.
+                "question": "zzqvnomatch7f29c4e8a6b1c3d5e7f9",
                 "language": "en",
             },
         )
