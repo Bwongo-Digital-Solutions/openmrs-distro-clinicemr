@@ -57,6 +57,7 @@ services:
       KNOWLEDGE_DB_PATH: /data/knowledge.db
       KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
       KNOWLEDGE_MAX_QUERY_CHARS: ${AMANAH_MAX_INPUT_CHARS:-4000}
+      KNOWLEDGE_MAX_QUERY_CHARS: "1000"
       KNOWLEDGE_MAX_RESULTS: "5"
     volumes:
       - amanah-knowledge-data:/data
