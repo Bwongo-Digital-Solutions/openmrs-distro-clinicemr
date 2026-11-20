@@ -97,8 +97,9 @@ server {
   }
 
   location /amanah/portal/ {
+    set $amanah_portal http://amanah-gen-portal:80;
     proxy_read_timeout 60s;
-    proxy_pass http://amanah-gen-portal:80;
+    proxy_pass $amanah_portal;
   }
 
   location = /openmrs/spa {
