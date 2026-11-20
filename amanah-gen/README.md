@@ -7,10 +7,13 @@ This directory adds an opt-in, modular foundation for AMANAH GEN to the ClinicEM
 - **AI Gateway**: authenticated access to a private Ollama runtime. It is an educational explanation service only; it does not diagnose, classify variants, calculate inherited-disease risk, or make reproductive or marriage recommendations.
 - **Genetics API**: deliberately disabled scaffold. Clinical screening and genetic-record endpoints return HTTP 501 until consent, authorization, encryption, audit, retention, and clinical governance are implemented and reviewed.
 - **Ollama**: private model runtime. Its port is not published to the host.
+- **Keycloak**: optional OIDC identity provider with its own PostgreSQL database, imported AMANAH GEN realm, API audience mapper, and role definitions. The development port is bound to VPS loopback and accessed through an SSH tunnel.
 
 ## Setup and deployment
 
-Follow the complete [deployment guide](DEPLOYMENT.md) for Ubuntu preparation, branch checkout, environment/secrets, Compose validation, startup, health checks, optional model provisioning, identity-provider setup, and safe stop/restart procedures.
+Follow the complete [deployment guide](DEPLOYMENT.md) for Ubuntu preparation, branch checkout, environment/secrets, Compose validation, startup, health checks, optional model provisioning, and safe stop/restart procedures.
+
+For the IP-only VPS development identity setup, follow [KEYCLOAK-DEV.md](KEYCLOAK-DEV.md). It uses a loopback-only Keycloak port and SSH tunnel rather than exposing login over public HTTP.
 
 Quick start from the repository root, after completing the deployment guide's host and environment checks:
 
