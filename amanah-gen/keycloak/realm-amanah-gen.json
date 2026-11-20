@@ -1,0 +1,83 @@
+{
+  "realm": "amanah-gen",
+  "displayName": "AMANAH GEN",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "AMANAH_GEN_AI_USER",
+        "description": "May access approved AMANAH GEN educational AI features"
+      },
+      {
+        "name": "AMANAH_GEN_CLINICIAN",
+        "description": "Clinician role; does not by itself grant AI access"
+      },
+      {
+        "name": "AMANAH_GEN_COUNSELLOR",
+        "description": "Genetic counselling role; does not by itself grant AI access"
+      },
+      {
+        "name": "AMANAH_GEN_ADMIN",
+        "description": "AMANAH GEN application administration role"
+      }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "amanah-gen-api-audience",
+      "description": "Adds the AMANAH GEN API audience to access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "amanah-gen-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "amanah-gen-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "amanah-gen-web",
+      "name": "AMANAH GEN Web (development)",
+      "description": "Development OIDC client. Replace localhost redirect URIs when a secured application URL is established.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "http://localhost"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "amanah-gen-api-audience"
+      ]
+    }
+  ]
+}
