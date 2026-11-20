@@ -4,53 +4,65 @@ This directory adds an opt-in, modular foundation for AMANAH GEN to the ClinicEM
 
 ## Services
 
-- **AI Gateway**: authenticated access to a private Ollama runtime. It is an educational explanation service only; it does not diagnose, classify variants, calculate inherited-disease risk, or make reproductive or marriage recommendations.
+- **AI Gateway**: authenticates OIDC users, retrieves approved knowledge passages, and asks a private Ollama model to explain only that retrieved educational content. It does not diagnose, interpret individual genetic tests, classify variants, calculate inherited-disease risk, or make reproductive or marriage recommendations.
+- **Knowledge API**: internal-only SQLite FTS5 retrieval. It returns only documents explicitly approved by a human reviewer. It has no host-published port.
+- **Knowledge registry CLI**: registers UTF-8 Markdown/text sources as pending, then supports explicit approval and withdrawal inside the knowledge container.
 - **Genetics API**: deliberately disabled scaffold. Clinical screening and genetic-record endpoints return HTTP 501 until consent, authorization, encryption, audit, retention, and clinical governance are implemented and reviewed.
 - **Ollama**: private model runtime. Its port is not published to the host.
-- **Keycloak**: optional OIDC identity provider with its own PostgreSQL database, imported AMANAH GEN realm, API audience mapper, and role definitions. The development port is bound to VPS loopback and accessed through an SSH tunnel.
+- **Keycloak**: OIDC identity provider with its own PostgreSQL database and AMANAH GEN realm.
 
 ## Setup and deployment
 
-Follow the complete [deployment guide](DEPLOYMENT.md) for Ubuntu preparation, branch checkout, environment/secrets, Compose validation, startup, health checks, optional model provisioning, and safe stop/restart procedures.
+Follow [DEPLOYMENT.md](DEPLOYMENT.md) for server preparation, environment/secrets, Compose validation, startup, and health checks. Keep all secrets in the untracked deployment `.env` file.
 
-For the IP-only VPS development identity setup, follow [KEYCLOAK-DEV.md](KEYCLOAK-DEV.md). It uses a loopback-only Keycloak port and SSH tunnel rather than exposing login over public HTTP.
+Validate and build from the repository root:
 
-Quick start from the repository root, after completing the deployment guide's host and environment checks:
-
-~~~
+```sh
 docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen config --quiet
-docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d --build
-~~~
+docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d --build amanah-knowledge-api amanah-ai-gateway
+```
 
-The default gateway host port is 80. If another service (such as an existing Bahmni deployment) already uses it, use a separate VM/server or change the gateway host-port mapping as documented in DEPLOYMENT.md. Do not reuse another deployment's database volumes.
+The knowledge database uses its own `amanah-knowledge-data` named volume. Do not delete volumes or reuse ClinicEMR/OpenMRS database volumes.
 
-## Required configuration
+## Configure the retrieval credential
 
-Set these in the deployment environment; never commit real secrets:
+Generate a unique random secret on the server and add it to the existing `.env` without exposing it in chat or committing it:
 
-- AMANAH_OIDC_ISSUER: exact issuer URL from the identity provider.
-- AMANAH_OIDC_AUDIENCE: API audience expected in the access token.
-- AMANAH_JWT_JWKS_URL: explicit JWKS endpoint for signature verification.
-- AMANAH_ALLOWED_ROLE: role required for AI access (default AMANAH_GEN_AI_USER).
-- AMANAH_OLLAMA_MODEL: locally installed, reviewed model name.
-- AMANAH_AI_ENABLED=true: explicit opt-in. Keep false until identity, model, security, and clinical governance checks are complete.
+```sh
+openssl rand -hex 32
+```
 
-The gateway rejects requests if OIDC configuration is absent, the token is invalid, or the required role is missing. Configure the identity provider to issue short-lived access tokens with the required audience and role, and verify the role claim mapping.
+Set `AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN` to that value. The same value is injected into the Knowledge API and AI Gateway; it is not an OIDC user token. Recreate only those two services after setting it.
+
+## Knowledge document workflow
+
+See [knowledge-api/README.md](knowledge-api/README.md). Only reviewed, approved UTF-8 Markdown/text documents are retrievable. Ingestion creates a pending record; a separate explicit approval is required. Do not use illustrative documents as clinical references.
+
+## AI request
+
+The authenticated `POST /amanah/api/ai/chat` request accepts only:
+
+```json
+{"question":"What does genetic screening mean?","language":"en"}
+```
+
+`language` may be `en`, `ar`, or `auto`. Caller-supplied clinical context is rejected. The gateway retrieves approved passages itself, returns their source metadata, and does not call Ollama when retrieval finds no approved material. AI remains disabled by default.
 
 ## Clinical and privacy release gates
 
 This is an integration scaffold, not a clinically validated product. Before using real patient data:
 
-1. Complete a UAE legal/privacy assessment, including applicable health-data and genetic-data requirements.
+1. Complete applicable UAE and other jurisdictional legal/privacy assessments.
 2. Complete a clinical safety case and approval by qualified genetics professionals.
 3. Implement server-side, purpose-specific consent and independent consent for each person in any couple workflow.
-4. Implement encrypted storage, key management, retention/deletion rules, access reviews, and durable audit events.
-5. Validate the model, approved knowledge base, Arabic/English content, bias, and hallucination controls.
-6. Perform threat modelling, penetration testing, backup/restore testing, and operational monitoring.
-7. Ensure raw genomic data and identifiable patient data are not sent to external model providers.
+4. Implement encrypted storage, key management, retention/deletion rules, durable audit events, backups, and access reviews.
+5. Validate every knowledge source, its licensing, version, review date, language, and translation quality.
+6. Validate model outputs, bias, hallucinations, source faithfulness, prompt-injection resilience, and Arabic/English quality with qualified reviewers.
+7. Perform threat modelling, penetration testing, incident-response and backup/restore testing.
+8. Ensure raw genomic data and identifiable patient data are not sent to external model providers.
 
-Do not treat local Ollama hosting as a privacy guarantee. Do not store genetic results in browser localStorage. Do not merge two people's records into a shared couple record. Revoking consent must stop future sharing while preserving records that must legally remain in the clinical record.
+Do not treat local Ollama hosting as a privacy guarantee. Do not store genetic results in browser localStorage. Do not merge two people's records into a shared couple record. Revoking consent must stop future sharing while preserving records that must legally remain in the clinical record. Never sell genetic data or use it for advertising.
 
 ## Current scope
 
-The Genetics API intentionally has no patient, screening, variant, or couple endpoints. Add those only after the above controls are designed, implemented, tested, and approved.
+The Genetics API intentionally has no patient, screening, variant, or couple endpoints. The knowledge service is an educational retrieval foundation only; it is not a source of patient-specific genetic interpretation.
