@@ -38,6 +38,11 @@ class TransitionValidationRequest(BaseModel):
 async def require_clinical_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> dict[str, Any]:
+    if not GENETICS_API_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Genetics API is disabled by deployment policy",
+        )
     if not credentials:
         raise HTTPException(
             status_code=401,
@@ -66,6 +71,7 @@ async def require_clinical_user(
     top_level_roles = claims.get("roles", [])
     if isinstance(top_level_roles, list):
         roles.extend(top_level_roles)
+    roles = [role for role in roles if isinstance(role, str)]
     if not ALLOWED_ROLES.intersection(roles):
         raise HTTPException(status_code=403, detail="A clinical AMANAH GEN role is required")
     return claims
@@ -116,7 +122,10 @@ async def openmrs_fhir_capabilities(_user=Depends(require_clinical_user)):
     "/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
 )
-async def clinical_endpoints_not_implemented(path: str):
+async def clinical_endpoints_not_implemented(
+    path: str,
+    _user=Depends(require_clinical_user),
+):
     # Patient-linked screening, consent and result endpoints remain unavailable
     # until durable consent, record-level authorization, encryption and audit
     # controls have been implemented and reviewed.
