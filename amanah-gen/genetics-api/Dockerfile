@@ -7,9 +7,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM base AS test
 COPY app.py workflow.py fhir_client.py ./
 COPY tests ./tests
-RUN python -m unittest discover -s tests -v
+RUN python -m unittest discover -s tests -v && touch /app/.tests-passed
 
 FROM base AS runtime
+# Make the runtime image depend on the successful test stage without shipping test files.
+COPY --from=test /app/.tests-passed /tmp/amanah-genetics-api-tests-passed
 COPY app.py workflow.py fhir_client.py ./
 USER 10001
 EXPOSE 8000
