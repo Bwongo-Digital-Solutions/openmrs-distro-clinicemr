@@ -48,7 +48,7 @@ Run these commands from the repository root on the VPS. They use the active Comp
 bash amanah-gen/scripts/test-knowledge-lifecycle.sh
 ```
 
-The script creates a uniquely named synthetic document, verifies that pending content is excluded, approves it with a test reviewer identity, verifies retrieval, withdraws it, verifies exclusion again, and checks the `registered`, `approved`, and `withdrawn` audit events. The test record is intentionally retained as withdrawn so its audit history remains available. It is not clinical content and must never be approved as a real reference.
+The script creates a uniquely named synthetic document, verifies that pending content is excluded, approves it with a test reviewer identity, verifies retrieval, and exercises the AI Gateway `/chat` route against the **real running Knowledge API** while intercepting only the model call. It checks role enforcement, caller-context rejection, approved-source grounding, citation validation, and safe no-answer behaviour. It then withdraws the document, verifies exclusion again, and checks the `registered`, `approved`, and `withdrawn` audit events. AI is enabled only in the short-lived test process; the deployed container setting remains `AI_ENABLED=false`. The test record is intentionally retained as withdrawn so its audit history remains available. It is not clinical content and must never be approved as a real reference.
 
 ### 2. AI Gateway application security regression tests
 
