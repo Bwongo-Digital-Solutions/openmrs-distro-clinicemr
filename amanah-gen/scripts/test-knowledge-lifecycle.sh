@@ -45,6 +45,7 @@ meaning and must never guide patient care.
 This test content is deliberately synthetic and is not an approved clinical
 reference. The test script will withdraw this record after the checks.
 EOF
+chmod 644 "$HOST_DOC"
 
 echo "===== 1. REGISTER SYNTHETIC DOCUMENT AS PENDING ====="
 docker cp "$HOST_DOC" "$KNOWLEDGE_ID:$CONTAINER_DOC" >/dev/null
