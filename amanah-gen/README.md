@@ -38,6 +38,42 @@ Set `AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN` to that value. The same value is injected
 
 See [knowledge-api/README.md](knowledge-api/README.md). Only reviewed, approved UTF-8 Markdown/text documents are retrievable. Ingestion creates a pending record; a separate explicit approval is required. Do not use illustrative documents as clinical references.
 
+## Automated security validation
+
+Run these commands from the repository root on the VPS. They use the active Compose project and do not stop or recreate OpenMRS, modify its databases, or delete volumes.
+
+### 1. Knowledge API lifecycle
+
+```sh
+bash amanah-gen/scripts/test-knowledge-lifecycle.sh
+```
+
+The script creates a uniquely named synthetic document, verifies that pending content is excluded, approves it with a test reviewer identity, verifies retrieval, withdraws it, verifies exclusion again, and checks the `registered`, `approved`, and `withdrawn` audit events. The test record is intentionally retained as withdrawn so its audit history remains available. It is not clinical content and must never be approved as a real reference.
+
+### 2. AI Gateway application security regression tests
+
+```sh
+bash amanah-gen/scripts/test-ai-gateway-security.sh
+```
+
+The suite runs inside the currently running AI Gateway container. It uses a generated synthetic RSA key and mocked Knowledge API/model responses. It tests missing/invalid/expired tokens, issuer and audience validation, role enforcement, empty tool exposure, rejection of caller-supplied clinical context, fail-closed retrieval, and valid/invalid/missing citation handling. It does not enable the deployed model or send requests to an external model provider.
+
+These are application-level regression tests, not a penetration test. The synthetic JWKS is used to exercise JWT verification logic; the live identity-provider signature check is covered separately below.
+
+### 3. Live HTTPS and Keycloak smoke test
+
+```sh
+bash amanah-gen/scripts/test-ai-gateway-live.sh
+```
+
+Run this interactively. It prompts for a short-lived access token for a synthetic user assigned the `AMANAH_GEN_AI_USER` role; input is hidden and the token is not saved. It checks the public HTTPS route, unauthenticated rejection, authenticated model/tool access, rejection of caller-supplied context, and the deployment policy that chat remains disabled. The script expects `AI_ENABLED=false`.
+
+The live test does not exercise model generation or citation behaviour. Those are covered by the isolated mocked regression tests. Neither suite proves resistance to every prompt-injection attack; adversarial model evaluation and qualified clinical review remain required.
+
+### Expected result
+
+All three commands should finish with `PASS`. A failure should be investigated before any AI enablement. Keep `AMANAH_AI_ENABLED=false` throughout these tests.
+
 ## AI request
 
 The authenticated `POST /amanah/api/ai/chat` request accepts only:
