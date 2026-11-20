@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Local administrator CLI for the AMANAH GEN approved knowledge registry.
+"""Admin CLI for the AMANAH GEN knowledge registry.
 
-Run inside the knowledge container. Ingestion always creates a PENDING document.
-A separate explicit approve command is required before retrieval can return it.
-Only UTF-8 Markdown and plain-text files are accepted.
+Ingestion creates a PENDING record. Only an explicit human approval enables retrieval.
+The event table records ingestion, approval, and withdrawal actions. It is an
+application audit trail, not tamper-proof or a replacement for central audit logging.
 """
 import argparse
 import hashlib
@@ -42,8 +42,21 @@ def connect():
             tokenize='unicode61'
         );
         CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+        CREATE TABLE IF NOT EXISTS document_events (
+            id TEXT PRIMARY KEY, document_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('registered','approved','withdrawn')),
+            actor TEXT NOT NULL, occurred_at TEXT NOT NULL, note TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_events_doc ON document_events(document_id, occurred_at);
     """)
     return db
+
+
+def event(db, doc_id, action, actor, note=""):
+    db.execute(
+        "INSERT INTO document_events(id,document_id,action,actor,occurred_at,note) VALUES (?,?,?,?,?,?)",
+        (str(uuid.uuid4()), doc_id, action, actor, now(), note),
+    )
 
 
 def make_chunks(text, size=1100):
@@ -80,7 +93,7 @@ def ingest(args):
     except UnicodeDecodeError:
         raise SystemExit("Document must be valid UTF-8.")
     if len(content) < 80:
-        raise SystemExit("Document is too short; provide a substantive approved source.")
+        raise SystemExit("Document is too short; provide a substantive source.")
     digest = hashlib.sha256(raw).hexdigest()
     chunks = make_chunks(content)
     if not chunks:
@@ -107,6 +120,7 @@ def ingest(args):
                 "INSERT INTO chunks_fts(chunk_id,document_id,content) VALUES (?,?,?)",
                 (chunk_id,doc_id,chunk),
             )
+        event(db, doc_id, "registered", args.registered_by, "Created as pending; not retrievable.")
         db.commit()
     print(f"Document registered as PENDING: {doc_id}")
     print(f"Chunks: {len(chunks)}")
@@ -120,10 +134,11 @@ def approve(args):
             raise SystemExit("Document not found.")
         if row[0] != "pending":
             raise SystemExit(f"Only pending documents can be approved (current status: {row[0]}).")
-        db.execute("""
-            UPDATE documents SET status='approved', approved_at=?, approved_by=?
-            WHERE id=?
-        """, (now(),args.approved_by,args.id))
+        db.execute(
+            "UPDATE documents SET status='approved', approved_at=?, approved_by=? WHERE id=?",
+            (now(),args.approved_by,args.id),
+        )
+        event(db, args.id, "approved", args.approved_by, args.note)
         db.commit()
     print(f"Approved: {args.id} by {args.approved_by}")
 
@@ -136,6 +151,7 @@ def withdraw(args):
         )
         if cur.rowcount != 1:
             raise SystemExit("Approved document not found; no change made.")
+        event(db, args.id, "withdrawn", args.withdrawn_by, args.note)
         db.commit()
     print(f"Withdrawn from retrieval: {args.id}")
 
@@ -152,11 +168,23 @@ def listing(_args):
         print(" | ".join(str(value or "") for value in row))
 
 
+def history(args):
+    with connect() as db:
+        rows = db.execute("""
+            SELECT action,actor,occurred_at,note FROM document_events
+            WHERE document_id=? ORDER BY occurred_at
+        """, (args.id,)).fetchall()
+    if not rows:
+        print("No events found for this document.")
+    for row in rows:
+        print(" | ".join(row))
+
+
 def main():
     parser = argparse.ArgumentParser(description="AMANAH GEN knowledge registry administration")
     sub = parser.add_subparsers(required=True)
-    add = sub.add_parser("ingest", help="register a UTF-8 Markdown/text document as pending")
-    for flag in ("title","source","publisher","version"):
+    add = sub.add_parser("ingest", help="register UTF-8 Markdown/text as pending")
+    for flag in ("title","source","publisher","version","registered-by"):
         add.add_argument("--"+flag, required=True)
     add.add_argument("--language", choices=("en","ar"), required=True)
     add.add_argument("--file", required=True)
@@ -164,12 +192,18 @@ def main():
     ok = sub.add_parser("approve", help="approve a pending document after human review")
     ok.add_argument("--id", required=True)
     ok.add_argument("--approved-by", required=True)
+    ok.add_argument("--note", default="")
     ok.set_defaults(func=approve)
     off = sub.add_parser("withdraw", help="remove an approved document from retrieval")
     off.add_argument("--id", required=True)
+    off.add_argument("--withdrawn-by", required=True)
+    off.add_argument("--note", default="")
     off.set_defaults(func=withdraw)
     ls = sub.add_parser("list", help="list registered document metadata")
     ls.set_defaults(func=listing)
+    hist = sub.add_parser("history", help="show registry events for a document")
+    hist.add_argument("--id", required=True)
+    hist.set_defaults(func=history)
     args = parser.parse_args()
     args.func(args)
 
