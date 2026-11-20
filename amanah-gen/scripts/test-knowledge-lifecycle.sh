@@ -26,7 +26,7 @@ cleanup() {
       --id "$DOC_ID" --withdrawn-by "lifecycle-test-cleanup" \
       --note "Automatic cleanup after lifecycle test interruption." >/dev/null 2>&1 || true
   fi
-  docker exec "$KNOWLEDGE_ID" rm -f "$CONTAINER_DOC" >/dev/null 2>&1 || true
+  docker exec -u 0 "$KNOWLEDGE_ID" rm -f "$CONTAINER_DOC" >/dev/null 2>&1 || true
   rm -f "$HOST_DOC"
 }
 trap cleanup EXIT
