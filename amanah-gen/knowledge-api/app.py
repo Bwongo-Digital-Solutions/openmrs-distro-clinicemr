@@ -61,6 +61,14 @@ def initialise() -> None:
             )
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS document_events (
+                id TEXT PRIMARY KEY, document_id TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('registered','approved','withdrawn')),
+                actor TEXT NOT NULL, occurred_at TEXT NOT NULL, note TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_document_events_doc ON document_events(document_id, occurred_at)")
         db.commit()
 
 
