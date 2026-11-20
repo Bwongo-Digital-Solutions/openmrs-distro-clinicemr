@@ -15,7 +15,7 @@ TEST_FILE="amanah-gen/ai-gateway/tests/test_gateway_security.py"
 
 REMOTE_TEST="/tmp/amanah-gateway-security-test-$$.py"
 cleanup() {
-  docker exec "$AI_ID" rm -f "$REMOTE_TEST" >/dev/null 2>&1 || true
+  docker exec -u 0 "$AI_ID" rm -f "$REMOTE_TEST" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
