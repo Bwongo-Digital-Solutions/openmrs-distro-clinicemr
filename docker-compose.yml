@@ -1,6 +1,8 @@
 services:
   gateway:
-    image: openmrs/openmrs-reference-application-3-gateway:${TAG:-qa}
+    image: clinicemr-gateway:${TAG:-amanah-gen}
+    build:
+      context: ./gateway
     restart: "unless-stopped"
     depends_on:
       - frontend

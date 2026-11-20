@@ -1,0 +1,111 @@
+services:
+  amanah-ollama:
+    image: ${AMANAH_OLLAMA_IMAGE:-ollama/ollama:latest}
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    volumes:
+      - amanah-ollama-data:/root/.ollama
+    # Intentionally no host-published ports. Only internal Compose services use Ollama.
+
+  amanah-keycloak-db:
+    image: postgres:16-alpine
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${AMANAH_KEYCLOAK_DB_PASSWORD:?Set AMANAH_KEYCLOAK_DB_PASSWORD in .env}
+    volumes:
+      - amanah-keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  amanah-keycloak:
+    image: ${AMANAH_KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.8.2}
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: amanah-keycloak-db
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${AMANAH_KEYCLOAK_DB_PASSWORD:?Set AMANAH_KEYCLOAK_DB_PASSWORD in .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${AMANAH_KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${AMANAH_KEYCLOAK_ADMIN_PASSWORD:?Set AMANAH_KEYCLOAK_ADMIN_PASSWORD in .env}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${AMANAH_KEYCLOAK_HOSTNAME:-http://localhost:8081}
+      KC_HOSTNAME_STRICT: "true"
+    ports:
+      # Loopback-only: reach Keycloak through an SSH tunnel, not the public network.
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./amanah-gen/keycloak/realm-amanah-gen.json:/opt/keycloak/data/import/realm-amanah-gen.json:ro
+    depends_on:
+      amanah-keycloak-db:
+        condition: service_healthy
+
+  amanah-knowledge-api:
+    build:
+      context: ./amanah-gen/knowledge-api
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      KNOWLEDGE_DB_PATH: /data/knowledge.db
+      KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
+      KNOWLEDGE_MAX_QUERY_CHARS: "1000"
+      KNOWLEDGE_MAX_RESULTS: "5"
+    volumes:
+      - amanah-knowledge-data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # No host port: retrieval is available only to services on the Compose network.
+
+  amanah-ai-gateway:
+    build:
+      context: ./amanah-gen/ai-gateway
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      AI_ENABLED: ${AMANAH_AI_ENABLED:-false}
+      OLLAMA_BASE_URL: http://amanah-ollama:11434
+      OLLAMA_MODEL: ${AMANAH_OLLAMA_MODEL:-}
+      OIDC_ISSUER: ${AMANAH_OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${AMANAH_OIDC_AUDIENCE:-}
+      OIDC_JWKS_URL: ${AMANAH_JWT_JWKS_URL:-}
+      ALLOWED_ROLE: ${AMANAH_ALLOWED_ROLE:-AMANAH_GEN_AI_USER}
+      MAX_INPUT_CHARS: ${AMANAH_MAX_INPUT_CHARS:-4000}
+      KNOWLEDGE_API_URL: http://amanah-knowledge-api:8000
+      KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
+    depends_on:
+      amanah-ollama:
+        condition: service_started
+      amanah-keycloak:
+        condition: service_started
+      amanah-knowledge-api:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  amanah-genetics-api:
+    build:
+      context: ./amanah-gen/genetics-api
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      GENETICS_API_ENABLED: "false"
+    expose:
+      - "8000"
+
+volumes:
+  amanah-ollama-data:
+  amanah-keycloak-db-data:
+  amanah-knowledge-data:
