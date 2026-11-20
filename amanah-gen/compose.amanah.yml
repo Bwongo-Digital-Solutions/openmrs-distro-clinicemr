@@ -63,6 +63,11 @@ services:
       - amanah-knowledge-data:/data
     expose:
       - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     # No host port: retrieval is available only to services on the Compose network.
 
   amanah-ai-gateway:
@@ -82,9 +87,12 @@ services:
       KNOWLEDGE_API_URL: http://amanah-knowledge-api:8000
       KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
     depends_on:
-      - amanah-ollama
-      - amanah-keycloak
-      - amanah-knowledge-api
+      amanah-ollama:
+        condition: service_started
+      amanah-keycloak:
+        condition: service_started
+      amanah-knowledge-api:
+        condition: service_healthy
     expose:
       - "8000"
 
