@@ -30,7 +30,13 @@ class ExplainRequest(BaseModel):
 async def require_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> dict[str, Any]:
-    if not credentials or not _jwks or not ISSUER or not AUDIENCE:
+    if not credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not _jwks or not ISSUER or not AUDIENCE:
         raise HTTPException(status_code=503, detail="Identity provider is not configured")
     try:
         signing_key = _jwks.get_signing_key_from_jwt(credentials.credentials)
