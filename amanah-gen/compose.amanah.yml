@@ -48,6 +48,22 @@ services:
       amanah-keycloak-db:
         condition: service_healthy
 
+  amanah-knowledge-api:
+    build:
+      context: ./amanah-gen/knowledge-api
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      KNOWLEDGE_DB_PATH: /data/knowledge.db
+      KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
+      KNOWLEDGE_MAX_QUERY_CHARS: ${AMANAH_MAX_INPUT_CHARS:-4000}
+      KNOWLEDGE_MAX_RESULTS: "5"
+    volumes:
+      - amanah-knowledge-data:/data
+    expose:
+      - "8000"
+    # No host port: retrieval is available only to services on the Compose network.
+
   amanah-ai-gateway:
     build:
       context: ./amanah-gen/ai-gateway
@@ -62,9 +78,12 @@ services:
       OIDC_JWKS_URL: ${AMANAH_JWT_JWKS_URL:-}
       ALLOWED_ROLE: ${AMANAH_ALLOWED_ROLE:-AMANAH_GEN_AI_USER}
       MAX_INPUT_CHARS: ${AMANAH_MAX_INPUT_CHARS:-4000}
+      KNOWLEDGE_API_URL: http://amanah-knowledge-api:8000
+      KNOWLEDGE_RETRIEVAL_TOKEN: ${AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN:-}
     depends_on:
       - amanah-ollama
       - amanah-keycloak
+      - amanah-knowledge-api
     expose:
       - "8000"
 
@@ -81,3 +100,4 @@ services:
 volumes:
   amanah-ollama-data:
   amanah-keycloak-db-data:
+  amanah-knowledge-data:
