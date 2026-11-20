@@ -196,3 +196,8 @@ Before production or real-patient use, complete at minimum:
 - Formal approval of the complete clinical workflow and all user-facing explanations.
 
 Never sell genetic data or use it for advertising. Do not merge individuals' records into a shared couple record. Declining or revoking sharing consent must not disclose a person's result or screening participation to another person. Follow applicable record-retention obligations when processing withdrawal requests.
+
+
+### Included Keycloak development option
+
+This branch includes an optional Keycloak realm and a loopback-only development deployment. For an IP-only VPS, use the SSH-tunnel procedure in [KEYCLOAK-DEV.md](KEYCLOAK-DEV.md). Do not expose Keycloak over public HTTP or use this setup for real users or clinical information. The guide sets the issuer, audience, and internal JWKS URL consistently.
