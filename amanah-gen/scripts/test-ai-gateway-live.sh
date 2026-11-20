@@ -18,6 +18,11 @@ read -r -s -p "Paste short-lived synthetic test-user access token (input hidden)
 echo
 [[ -n "$ACCESS_TOKEN" ]] || { echo "ERROR: No token supplied." >&2; exit 2; }
 
+# Keep the bearer value out of curl's process arguments and shell history.
+umask 077
+printf 'header = "Authorization: Bearer %s"\n' "$ACCESS_TOKEN" > "$TMP/auth.curl"
+unset ACCESS_TOKEN
+
 request() {
   local name="$1" expected="$2"
   shift 2
@@ -54,9 +59,9 @@ request "Malformed token rejected" 401 \
 echo
 echo "===== 3. VALID OIDC USER AND ROLE ====="
 request "Authorised test user can read models" 200 \
-  -H "Authorization: Bearer $ACCESS_TOKEN" "$BASE/models"
+  --config "$TMP/auth.curl" "$BASE/models"
 request "Authorised test user can read tools" 200 \
-  -H "Authorization: Bearer $ACCESS_TOKEN" "$BASE/tools"
+  --config "$TMP/auth.curl" "$BASE/tools"
 python3 - "$TMP/response" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -68,7 +73,7 @@ PY
 echo
 echo "===== 4. INPUT BOUNDARY ====="
 request "Caller-supplied clinical context rejected" 422 \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  --config "$TMP/auth.curl" \
   -H "Content-Type: application/json" \
   --data '{"question":"Explain this","language":"en","clinical_context":"synthetic untrusted context"}' \
   "$BASE/chat"
@@ -76,12 +81,11 @@ request "Caller-supplied clinical context rejected" 422 \
 echo
 echo "===== 5. AI DISABLED GUARD ====="
 request "Chat blocked while AI is disabled" 503 \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  --config "$TMP/auth.curl" \
   -H "Content-Type: application/json" \
   --data '{"question":"What does genetic screening mean?","language":"en"}' \
   "$BASE/chat"
 
-unset ACCESS_TOKEN
 echo
 echo "PASS: live HTTPS authentication, role-gated access, input boundary, and disabled-AI guard."
 echo "Citation and approved-source behaviour are covered by test-ai-gateway-security.sh."
