@@ -1,0 +1,40 @@
+services:
+  amanah-ollama:
+    image: ${AMANAH_OLLAMA_IMAGE:-ollama/ollama:latest}
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    volumes:
+      - amanah-ollama-data:/root/.ollama
+    # Intentionally no host-published ports. Only internal Compose services use Ollama.
+
+  amanah-ai-gateway:
+    build:
+      context: ./amanah-gen/ai-gateway
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      AI_ENABLED: ${AMANAH_AI_ENABLED:-false}
+      OLLAMA_BASE_URL: http://amanah-ollama:11434
+      OLLAMA_MODEL: ${AMANAH_OLLAMA_MODEL:-}
+      OIDC_ISSUER: ${AMANAH_OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${AMANAH_OIDC_AUDIENCE:-}
+      OIDC_JWKS_URL: ${AMANAH_JWT_JWKS_URL:-}
+      ALLOWED_ROLE: ${AMANAH_ALLOWED_ROLE:-AMANAH_GEN_AI_USER}
+      MAX_INPUT_CHARS: ${AMANAH_MAX_INPUT_CHARS:-4000}
+    depends_on:
+      - amanah-ollama
+    expose:
+      - "8000"
+
+  amanah-genetics-api:
+    build:
+      context: ./amanah-gen/genetics-api
+    profiles: ["amanah-gen"]
+    restart: unless-stopped
+    environment:
+      GENETICS_API_ENABLED: "false"
+    expose:
+      - "8000"
+
+volumes:
+  amanah-ollama-data:
