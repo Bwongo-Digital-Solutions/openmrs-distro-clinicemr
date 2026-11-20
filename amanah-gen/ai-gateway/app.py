@@ -190,7 +190,7 @@ async def explain(payload: ExplainRequest, _user=Depends(require_user)):
         raise HTTPException(status_code=502, detail="Local model returned an empty response")
 
     valid_markers = {f"S{index}" for index in range(1, len(public_sources) + 1)}
-    used_markers = set(re.findall(r"\\[(S\\d+)\\]", answer))
+    used_markers = set(re.findall(r"\[(S\d+)\]", answer))
     citation_valid = bool(used_markers) and used_markers.issubset(valid_markers)
     if not citation_valid:
         answer = (
