@@ -18,7 +18,7 @@ ROLE = os.getenv("ALLOWED_ROLE", "AMANAH_GEN_AI_USER")
 MODEL = os.getenv("OLLAMA_MODEL", "")
 OLLAMA = os.getenv("OLLAMA_BASE_URL", "http://amanah-ollama:11434").rstrip("/")
 MAX_INPUT = int(os.getenv("MAX_INPUT_CHARS", "4000"))
-JWKS_URL = os.getenv("OIDC_JWKS_URL") or (f"{ISSUER}/.well-known/jwks.json" if ISSUER else "")
+JWKS_URL = os.getenv("OIDC_JWKS_URL", "").strip()
 _jwks = PyJWKClient(JWKS_URL) if JWKS_URL else None
 
 
@@ -44,8 +44,13 @@ async def require_user(
         )
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid access token")
-    roles = claims.get("realm_access", {}).get("roles", [])
-    roles += claims.get("roles", []) if isinstance(claims.get("roles", []), list) else []
+    realm_access = claims.get("realm_access") or {}
+    roles = realm_access.get("roles", []) if isinstance(realm_access, dict) else []
+    if not isinstance(roles, list):
+        roles = []
+    top_level_roles = claims.get("roles", [])
+    if isinstance(top_level_roles, list):
+        roles.extend(top_level_roles)
     if ROLE not in roles:
         raise HTTPException(status_code=403, detail="Required role is missing")
     return claims
