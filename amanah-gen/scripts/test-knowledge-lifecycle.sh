@@ -17,6 +17,8 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 PHRASE="amanah-quartz-orchard-$STAMP"
 HOST_DOC="$(mktemp --suffix=.txt)"
 CONTAINER_DOC="/tmp/amanah-knowledge-lifecycle-$STAMP.txt"
+E2E_TEST="amanah-gen/ai-gateway/tests/test_gateway_live_knowledge.py"
+REMOTE_E2E="/tmp/amanah-gateway-live-knowledge-$STAMP.py"
 DOC_ID=""
 APPROVED=0
 
@@ -27,6 +29,7 @@ cleanup() {
       --note "Automatic cleanup after lifecycle test interruption." >/dev/null 2>&1 || true
   fi
   docker exec -u 0 "$KNOWLEDGE_ID" rm -f "$CONTAINER_DOC" >/dev/null 2>&1 || true
+  docker exec -u 0 "$AI_ID" rm -f "$REMOTE_E2E" >/dev/null 2>&1 || true
   rm -f "$HOST_DOC"
 }
 trap cleanup EXIT
@@ -99,18 +102,24 @@ echo "===== 4. APPROVED DOCUMENT MUST BE RETRIEVABLE ====="
 search_check 1
 
 echo
-echo "===== 5. WITHDRAW DOCUMENT ====="
+echo "===== 5. EXERCISE THE AI GATEWAY AGAINST THE REAL APPROVED KNOWLEDGE API ====="
+[[ -f "$E2E_TEST" ]] || { echo "ERROR: Missing $E2E_TEST" >&2; exit 1; }
+docker cp "$E2E_TEST" "$AI_ID:$REMOTE_E2E" >/dev/null
+docker exec "$AI_ID" python "$REMOTE_E2E" "$DOC_ID" "$PHRASE"
+
+echo
+echo "===== 6. WITHDRAW DOCUMENT ====="
 docker exec "$KNOWLEDGE_ID" python /app/manage.py withdraw \
   --id "$DOC_ID" --withdrawn-by "lifecycle-test-reviewer" \
   --note "Automated synthetic lifecycle test completed."
 APPROVED=0
 
 echo
-echo "===== 6. WITHDRAWN DOCUMENT MUST NOT BE RETRIEVABLE ====="
+echo "===== 7. WITHDRAWN DOCUMENT MUST NOT BE RETRIEVABLE ====="
 search_check 0
 
 echo
-echo "===== 7. VERIFY AUDIT EVENTS ====="
+echo "===== 8. VERIFY AUDIT EVENTS ====="
 HISTORY="$(docker exec "$KNOWLEDGE_ID" python /app/manage.py history --id "$DOC_ID")"
 printf '%s\n' "$HISTORY"
 for action in registered approved withdrawn; do
