@@ -2,7 +2,7 @@
 
 This guide deploys the AMANAH GEN integration scaffold with the ClinicEMR services in this repository. It is for development and controlled integration testing only.
 
-> **Not production-ready:** This branch does not yet include validated genetic screening workflows, clinical genetic interpretation, consent management, encrypted genetic-record storage, durable audit logging, or a complete AMANAH GEN user interface. Do not connect real patient/genomic data or use this scaffold to make care decisions.
+> **Not production-ready:** This branch does not yet include validated genetic screening workflows, clinical genetic interpretation, consent management, encrypted genetic-record storage, durable central audit logging, or a complete AMANAH GEN user interface. Do not connect real patient/genomic data or use this scaffold to make care decisions.
 
 ## 1. Choose the host
 
@@ -46,54 +46,38 @@ git checkout amanah-gen-integration
 git pull --ff-only origin amanah-gen-integration
 ~~~
 
-If already cloned, run the fetch, checkout, and pull commands from the repository root.
+If already cloned, inspect `git status --short` before pulling. Preserve and review any local modifications; do not discard them to make the pull succeed.
 
 ## 3. Configure environment variables and secrets
 
-Compose reads .env from the repository root. If .env already exists, do not overwrite it; back it up and add/update only the required variables.
+Compose reads `.env` from the repository root. If `.env` already exists, do not overwrite it; add/update only the required variables.
 
-For a fresh deployment:
+For a fresh deployment, follow the deployment environment example and add the base ClinicEMR settings. Keep the existing database credentials unchanged when reusing an existing deployment.
 
-~~~
-cp amanah-gen/deployment.env.example .env
-~~~
-
-Generate two different strong passwords:
+Generate a dedicated retrieval secret on the server:
 
 ~~~
 openssl rand -hex 32
-openssl rand -hex 32
 ~~~
 
-Add the base ClinicEMR database settings and AMANAH GEN settings to .env. Example:
-
-~~~
-TAG=qa
-OMRS_DB_USER=openmrs
-OMRS_DB_PASSWORD=REPLACE_WITH_A_UNIQUE_STRONG_PASSWORD
-MYSQL_ROOT_PASSWORD=REPLACE_WITH_A_DIFFERENT_UNIQUE_STRONG_PASSWORD
-
-AMANAH_AI_ENABLED=false
-AMANAH_OLLAMA_IMAGE=ollama/ollama:latest
-AMANAH_OLLAMA_MODEL=
-AMANAH_OIDC_ISSUER=
-AMANAH_OIDC_AUDIENCE=
-AMANAH_JWT_JWKS_URL=
-AMANAH_ALLOWED_ROLE=AMANAH_GEN_AI_USER
-AMANAH_MAX_INPUT_CHARS=4000
-~~~
-
-Set the exact issuer, audience, and JWKS URL from your identity provider before testing authenticated AI access. The gateway validates token signature and claims and requires the configured role. Confirm the role claim format against your identity provider; do not assume a role mapping.
-
-Protect the file:
+Set the generated value as `AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN` in the untracked `.env` file. Do not use an OIDC user token, Keycloak password, or database password for this purpose. Do not paste the secret into chat or commit it. Protect `.env`:
 
 ~~~
 chmod 600 .env
 ~~~
 
-Never commit .env, passwords, signing keys, tokens, or other secrets. Changing database passwords in .env does not automatically change credentials inside an already initialized database volume. Coordinate credential rotation with the database itself.
+Keep these settings:
 
-Keep AMANAH_AI_ENABLED=false until OIDC, role assignment, model approval, and security/clinical governance checks are complete.
+~~~
+AMANAH_AI_ENABLED=false
+AMANAH_OLLAMA_MODEL=qwen3:1.7b
+AMANAH_MAX_INPUT_CHARS=4000
+AMANAH_KNOWLEDGE_RETRIEVAL_TOKEN=REPLACE_WITH_A_UNIQUE_RANDOM_SECRET
+~~~
+
+Set the exact OIDC issuer, audience, and JWKS URL for the active identity provider. The gateway validates token signature and claims and requires the configured role. Confirm the role claim format against the identity provider; do not assume a role mapping.
+
+Never commit `.env`, passwords, signing keys, tokens, or other secrets. Changing database passwords in `.env` does not automatically change credentials inside an already initialized database volume. Coordinate credential rotation with the database itself.
 
 ## 4. Validate the Compose configuration
 
@@ -103,69 +87,80 @@ Run from the repository root:
 docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen config --quiet
 ~~~
 
-Fix any errors before starting containers. You can inspect the rendered configuration by removing --quiet, but take care not to share output that may contain environment values.
+Fix any errors before starting containers. You can inspect the rendered configuration by removing `--quiet`, but take care not to share output that may contain environment values.
 
-## 5. Build and start
+## 5. Build and start the knowledge and AI services
 
-~~~
-docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d --build
-~~~
-
-This starts the ClinicEMR services in this repository plus the opt-in AMANAH GEN services. It creates/uses this Compose project's own named volumes. Do not run against a production deployment without a reviewed migration, backup, and rollback plan.
-
-## 6. Check containers and health endpoints
+For an existing ClinicEMR deployment, build and recreate only the two services being introduced/updated:
 
 ~~~
-docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen ps
-docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen logs --tail=100
-curl -i http://localhost/amanah/api/ai/health
-curl -i http://localhost/amanah/api/genetics/health
+docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d --build amanah-knowledge-api amanah-ai-gateway
 ~~~
 
-If you changed the gateway host port to 8088, use http://localhost:8088 for the curl requests. A healthy endpoint only confirms that the service responds; it does not mean clinical functionality is implemented or approved.
+This command does not request recreation of OpenMRS, its database, Keycloak, or Ollama. It creates a separate `amanah-knowledge-data` volume for the knowledge registry. Do not run `down -v`, volume-pruning commands, or broad cleanup commands.
 
-## 7. Provision a local Ollama model (optional)
+## 6. Verify service health
+
+~~~
+docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen ps amanah-knowledge-api amanah-ai-gateway
+docker logs --tail=80 openmrs-distro-clinicemr-amanah-knowledge-api-1
+docker logs --tail=80 openmrs-distro-clinicemr-amanah-ai-gateway-1
+~~~
+
+The knowledge service health endpoint is internal to the Compose network. The AI gateway health endpoint remains available through the existing configured gateway route. A healthy endpoint confirms process availability, not clinical approval.
+
+## 7. Register and approve knowledge documents
+
+The knowledge API accepts only UTF-8 Markdown/text through its container-local administration CLI. See [knowledge-api/README.md](knowledge-api/README.md) for the exact workflow.
+
+- Ingestion creates a pending document.
+- Pending documents are never returned by retrieval.
+- A qualified reviewer checks authority, content, language, version, licensing and clinical suitability.
+- An authorised reviewer explicitly approves the document using a reviewer identifier.
+- Withdrawal excludes a document from future retrieval.
+- Document events are recorded in the SQLite registry. This is not a tamper-proof central audit system.
+
+Do not seed the system with invented clinical content or assume that an arbitrary website is an approved source. Start with no approved documents until the clinical/content governance team has selected and reviewed real sources.
+
+## 8. Configure identity and test authenticated access
+
+Before any chat test:
+
+1. Configure the identity provider to issue short-lived access tokens for the expected API audience.
+2. Assign the AMANAH_GEN_AI_USER role only to authorised test users.
+3. Set OIDC issuer, audience, and JWKS URL to the exact active provider values.
+4. Test signature, issuer, audience, expiry, subject, and role validation with test accounts.
+5. Confirm raw genomic data and identifiable patient data are not sent to external model providers.
+6. Obtain security, privacy, and clinical governance approval.
+
+The authenticated `POST /amanah/api/ai/chat` request accepts only a question and language, for example:
+
+~~~
+{"question":"What does genetic screening mean?","language":"en"}
+~~~
+
+Supported languages are `en`, `ar`, and `auto`. Caller-supplied explanation context is rejected. The gateway retrieves approved passages itself and returns source metadata. If no approved passages match, it returns a safe no-answer response without calling Ollama.
+
+**Keep `AMANAH_AI_ENABLED=false`.** Do not enable patient-facing AI merely because the model and retrieval API respond. First validate source coverage, source faithfulness, prompt-injection resilience, Arabic/English quality, bias, hallucinations, escalation pathways, and clinical safety with qualified reviewers.
+
+## 9. Provision a local Ollama model (optional)
 
 Only do this after reviewing the model and confirming the host has sufficient memory and disk. Ollama is not published on a host port.
 
-Set AMANAH_OLLAMA_MODEL in .env to the approved model identifier, then pull and verify it:
+Set `AMANAH_OLLAMA_MODEL` in `.env` to the reviewed local model identifier, then pull and verify it:
 
 ~~~
 docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen exec amanah-ollama ollama pull MODEL_NAME
 docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen exec amanah-ollama ollama list
 ~~~
 
-Replace MODEL_NAME with the model approved by project reviewers. Pin and review the Ollama image and model version/digest before production. Local hosting is not by itself a privacy or clinical-safety guarantee.
+Pin and review the Ollama image and model digest before production. Local hosting is not by itself a privacy or clinical-safety guarantee.
 
-## 8. Configure identity and test authenticated access
+## 10. Access the application
 
-Before enabling chat:
+Open the configured server address in a browser. The OpenMRS frontend is the ClinicEMR shell. API routes are under `/amanah/api/`. This branch does not yet include a complete AMANAH GEN user interface.
 
-1. Configure the identity provider to issue short-lived access tokens for the expected API audience.
-2. Assign the AMANAH_GEN_AI_USER role only to authorized users.
-3. Set AMANAH_OIDC_ISSUER, AMANAH_OIDC_AUDIENCE, and AMANAH_JWT_JWKS_URL to the exact provider values.
-4. Test signature, issuer, audience, expiry, subject, and role validation with test accounts.
-5. Confirm raw genomic data and identifiable patient data are not sent to external model providers.
-6. Obtain security, privacy, and clinical governance approval.
-
-Only after these checks should an administrator deliberately set AMANAH_AI_ENABLED=true and recreate the AI service:
-
-~~~
-docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d --build amanah-ai-gateway
-~~~
-
-Test only with synthetic/non-identifiable content. The AI service is limited to explaining clinician-approved information. It must not diagnose, classify variants, independently calculate inherited-disease risk, infer carrier status, or recommend marriage/reproductive decisions. It does not replace qualified genetic counselling.
-
-## 9. Access the application
-
-Open the server address in a browser:
-
-- Default: http://SERVER_IP/
-- If using the alternate port: http://SERVER_IP:8088/
-
-The OpenMRS frontend is the ClinicEMR shell. API routes are under /amanah/api/. This branch does not yet include a complete AMANAH GEN user interface.
-
-## 10. Stop and restart without deleting data
+## 11. Stop and restart without deleting data
 
 Stop containers while preserving persistent data:
 
@@ -179,25 +174,20 @@ Start them again:
 docker compose -f docker-compose.yml -f amanah-gen/compose.amanah.yml --profile amanah-gen up -d
 ~~~
 
-Do not use docker compose down -v unless you intentionally want to delete this project's named volumes and have verified backups. Never use volume-pruning commands on a host with other deployments.
+Do not use `docker compose down -v` or volume-pruning commands on a host with other deployments.
 
-## 11. Backups and production readiness
+## 12. Backups and production readiness
 
-Establish and test backups for MariaDB and the OpenMRS application-data volume. Keep backups encrypted and access-controlled, and test restoration in an isolated environment.
+Back up the knowledge volume as well as the existing application data, using an approved encrypted backup process. Test restoration in an isolated environment. The knowledge SQLite database uses WAL mode; use a SQLite-consistent backup method (such as SQLite's backup API or a quiesced volume backup) rather than copying only the main database file while writes are active.
 
 Before production or real-patient use, complete at minimum:
 
-- UAE legal/privacy assessment for applicable health and genetic data requirements.
+- Applicable legal/privacy assessment, including UAE and any other jurisdiction involved.
 - Clinical safety case and review by qualified genetics professionals.
 - Server-side, purpose-specific consent, with independent consent from each person in any couple workflow.
-- Encrypted storage, key management, retention/deletion controls, access reviews, and durable audit events.
-- Arabic/English content review, approved knowledge sources, and model validation.
+- Encryption, key management, retention/deletion controls, central append-only audit events, access reviews, and incident response.
+- Approved and licensed knowledge sources, version/review dates, Arabic/English translation review, and model validation.
 - Threat modelling, penetration testing, monitoring, incident response, and backup/restore testing.
 - Formal approval of the complete clinical workflow and all user-facing explanations.
 
 Never sell genetic data or use it for advertising. Do not merge individuals' records into a shared couple record. Declining or revoking sharing consent must not disclose a person's result or screening participation to another person. Follow applicable record-retention obligations when processing withdrawal requests.
-
-
-### Included Keycloak development option
-
-This branch includes an optional Keycloak realm and a loopback-only development deployment. For an IP-only VPS, use the SSH-tunnel procedure in [KEYCLOAK-DEV.md](KEYCLOAK-DEV.md). Do not expose Keycloak over public HTTP or use this setup for real users or clinical information. The guide sets the issuer, audience, and internal JWKS URL consistently.
