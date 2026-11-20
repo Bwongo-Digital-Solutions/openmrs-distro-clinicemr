@@ -14,7 +14,7 @@ AI_ID="$("${COMPOSE[@]}" ps -q amanah-ai-gateway)"
 [[ -n "$AI_ID" ]] || { echo "ERROR: amanah-ai-gateway is not running." >&2; exit 1; }
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-PHRASE="amanah-quartz-orchard-$STAMP"
+PHRASE="zxqv${STAMP//[^a-zA-Z0-9]/}"
 HOST_DOC="$(mktemp --suffix=.txt)"
 CONTAINER_DOC="/tmp/amanah-knowledge-lifecycle-$STAMP.txt"
 E2E_TEST="amanah-gen/ai-gateway/tests/test_gateway_live_knowledge.py"
